@@ -431,7 +431,7 @@ class DLADepth(nn.Module):
             pose_output[f'trans_-1_0'] = translation
             # when inferencing t-th frame, we cal the transformation from t-1 -> t, so invert=False
             pose_output[f'map_-1_0'] = transformation_from_parameters(
-                axisangle=axisangle[:, 0], translation=translation[:, 0], invert=True,
+                axisangle=axisangle[:, 0], translation=translation[:, 0], invert=False,
                 )
         else:
             pose_output[f'map_-1_0'] = None

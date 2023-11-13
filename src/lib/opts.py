@@ -127,7 +127,7 @@ class opts(object):
     self.parser.add_argument('--output-format', type=str, default='video', help='video or text')
     self.parser.add_argument('--output-root', type=str, default='../demos', help='expected output root path')
 
-    self.parser.add_argument('--motion_comp', type=str, default='bot', choices=['none', 'bot', 'pose'], help='motion compensation')
+    self.parser.add_argument('--motion_comp', type=str, default='none', choices=['none', 'bot', 'pose'], help='motion compensation')
 
     # mot
     self.parser.add_argument('--data_cfg', type=str,
