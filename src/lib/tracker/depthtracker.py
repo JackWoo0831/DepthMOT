@@ -133,37 +133,87 @@ class STrack_d(STrack):
                 stracks[i].covariance = cov
         
     @staticmethod
-    def multi_pmc(stracks, transform):
+    def multi_pmc(stracks, depth_map, K, inv_K, T):
         """
         Pose motion compensation
+        Args:
+            stracks: List[STrack_d]
+            depth_map: torch.Tensor (w0, h0)
+            K: camera intrinsic matrix, torch.Tensor (4, 4)
+            inv_K: penrose inv of intrinsic matrix, torch.Tensor (4, 4)
+            T: transform matrix of two camera coords in world coord, torch.Tensor (4, 4)
+        Return:
+            None
         """
         if len(stracks) > 0:
-            multi_mean = np.asarray([st.mean.copy() for st in stracks])[:, :4]
-
-            # multi_mean[:, 2] *= multi_mean[:, 3]  # xyah -> xywh
+            # step 1, convert kalman mean to tlbr
+            multi_mean = np.asarray([st.mean.copy() for st in stracks])[:, :4]  # xywh
             multi_mean[:, :2] -= 0.5 * multi_mean[:, 2:]  # xywh -> tlwh
             multi_mean[:, 2:] += multi_mean[:, :2]  # tlwh -> tlbr
 
-            multi_mean_torch = torch.from_numpy(multi_mean).float()
+            multi_mean_tlbr = np.array(multi_mean)  # bkup
 
-            t = transform.repeat(multi_mean.shape[0], 1, 1).cpu().float()
+            multi_mean_tl = torch.from_numpy(multi_mean[:, :2]).float()
+            multi_mean_br = torch.from_numpy(multi_mean[:, 2:]).float()
 
-            # wrap
-            new_multi_mean = torch.bmm(t, multi_mean_torch.unsqueeze(2))
-            new_multi_mean = new_multi_mean.squeeze(2).numpy()  # tlbr, (N, 4)
+            multi_mean_tl = STrack_d.map_coord(multi_mean_tl, depth_map, K, inv_K, T)
+            multi_mean_br = STrack_d.map_coord(multi_mean_br, depth_map, K, inv_K, T)
 
-            # tlbr -> xyah
-            new_multi_mean[:, 0] = 0.5 * (new_multi_mean[:, 0] + new_multi_mean[:, 2])
-            new_multi_mean[:, 1] = 0.5 * (new_multi_mean[:, 1] + new_multi_mean[:, 3])  # xybr
-            new_multi_mean[:, 2] = 2 * (new_multi_mean[:, 2] - new_multi_mean[:, 0])
-            new_multi_mean[:, 3] = 2 * (new_multi_mean[:, 3] - new_multi_mean[:, 1])  # xywh
+            multi_mean = torch.cat([multi_mean_tl, multi_mean_br], dim=1).numpy()
 
-            new_multi_mean[:, 2] /= new_multi_mean[:, 3]  # xyah
+            # tlbr -> xywh
+            multi_mean[:, :2] = 0.5 * (multi_mean[:, :2] + multi_mean[:, 2:])  # xybr
+            multi_mean[:, 2:] = 2 * (multi_mean[:, 2:] - multi_mean[:, :2])
+
 
             for i in range(len(stracks)):
-                new_mean = new_multi_mean[i]  # (4, )
 
-                stracks[i].mean[:4] = new_mean
+                # cal iou
+                cur_mean, new_mean = multi_mean_tlbr[i], multi_mean[i]
+            
+                new_mean = STrack.xywh_to_tlbr(new_mean)
+                iou = matching.single_iou(cur_mean, new_mean)
+
+                if iou >= 0.5:
+                    stracks[i].mean[: 4] = multi_mean[i]
+
+    @staticmethod
+    def map_coord(coords, depth_map, K, inv_K, T):
+        """
+        map coords between two camera coord system
+        Args:
+            coords: coordinates, torch.Tensor (N, 2)
+            K, inv_K, T: same as multi_gmc()
+        Return:
+            np.ndarray (N, 2)
+        """
+        N = coords.shape[0]
+        h, w = depth_map.shape[0], depth_map.shape[1]
+
+        coords = torch.cat([coords.t(), torch.ones((1, N))], dim=0)  # (3, N)
+
+        # cam -> world
+        cam_points = torch.mm(inv_K[:3, :3], coords)  # (3, N)
+
+        # add depth
+        ind_row = torch.clamp(coords[1, :].long(), 0, h - 1)
+        ind_col = torch.clamp(coords[0, :].long(), 0, w - 1)
+
+        depth = depth_map[ind_row, ind_col]  # (N, )
+
+        cam_points = depth.view(1, -1) * cam_points
+
+        # make dim as 4
+        cam_points = torch.cat([cam_points, torch.ones((1, N))], dim=0)  # (4, N)
+
+        # world -> cam
+        P = torch.mm(K, T)[:3, :]  # (3, 4)
+
+        cam_points = torch.mm(P, cam_points)  # (3, N)
+
+        pix_coords = cam_points[:2, :] / (cam_points[2, :].unsqueeze(0) + 1e-7)  # (2, N)
+        
+        return pix_coords.t()
                 
     @property
     def tlwh(self):
@@ -592,12 +642,14 @@ class Tracker_d(JDETracker):
             wh = output['wh']  # shape: (bs, 4, h, w)
             depth_map = output['disp_0']  # shape: (bs, 1, h, w)
             transformation = output['map_-1_0']  # shape: (bs, 4, 4)
+            if transformation is not None:
+                transformation = transformation.squeeze().cpu()
 
             # interpolate depth map under (inputh, inputw) to (h0, w0)
             depth_map_ori = F.interpolate(depth_map, size=(height, width), mode='nearest')  # (bs, 1, h0, w0)
             depth_map_ori = depth_map_ori[0, 0].cpu()  # (h0, w0)
 
-            assert not torch.isnan(depth_map_ori).any().item(), 'exists nan!'
+            # assert not torch.isnan(depth_map_ori).any().item(), 'exists nan!'
 
             reg = output['reg'] if self.opt.reg_offset else None  # shape: (bs, 2, h, w)
             dets, inds = mot_decode(hm, wh, reg=reg, ltrb=self.opt.ltrb, K=self.opt.K)
@@ -614,8 +666,6 @@ class Tracker_d(JDETracker):
             ret = ret.astype(np.uint8)            
             im = pil.fromarray(ret)
             im.save(f'pred_{self.frame_id}.jpg')
-
-            exit()
 
         dets_dict = self.post_process(dets, meta)  # dict key: cls_id value: np.ndarray (obj num, 5)
         # merge all categories
@@ -669,64 +719,22 @@ class Tracker_d(JDETracker):
                 self._plot_det(img0_, dets_first[:, :4])
                 self.prev_det = torch.from_numpy(dets_first[:, :4]).float()
             
-            else:
-                
+            else:               
+
                 # t = transformation.repeat(self.prev_det.shape[0], 1, 1).cpu()
                 # det_cur = torch.bmm(t.float(), self.prev_det.unsqueeze(2).float()).numpy()
 
                 # kalman
                 multi_mean = np.asarray([st.mean.copy() for st in strack_pool])[:, :4]  # xywh
-               
+            
                 multi_mean[:, :2] -= 0.5 * multi_mean[:, 2:]  # xywh -> tlwh
                 multi_mean[:, 2:] += multi_mean[:, :2]  # tlwh -> tlbr
 
+                self._plot_det(img0_, multi_mean)
 
+                # self._draw_depth_map(depth_map_ori)
 
-                prev_det_tl = torch.from_numpy(multi_mean[:, :2]).float()  # (N, 2)
-                prev_det_br = torch.from_numpy(multi_mean[:, 2:]).float()
-
-                prev_det_tld = torch.cat([prev_det_tl.t(), torch.ones((1, prev_det_tl.shape[0]))], dim=0)  # (3, N)
-                prev_det_brd = torch.cat([prev_det_br.t(), torch.ones((1, prev_det_br.shape[0]))], dim=0)
-
-                # cam -> world
-                cam_points_tl = torch.matmul(self.inv_K[:3, :3], prev_det_tld)  # (3, N)
-                cam_points_br = torch.matmul(self.inv_K[:3, :3], prev_det_brd)
-
-                # add depth
-                tl_ind_row = torch.clamp(prev_det_tl[:, 1].long(), 0, height - 1)
-                tl_ind_col = torch.clamp(prev_det_tl[:, 0].long(), 0, width - 1)
-                prev_depth_tl = self.prev_depth_map[tl_ind_row, tl_ind_col]  # (N, )
-
-                br_ind_row = torch.clamp(prev_det_br[:, 1].long(), 0, height - 1)
-                br_ind_col = torch.clamp(prev_det_br[:, 0].long(), 0, width - 1)
-                prev_depth_br = self.prev_depth_map[br_ind_row, br_ind_col]  # (N, )
-                
-                cam_points_tl = prev_depth_tl.view(1, -1) * cam_points_tl  # (3, N)
-                cam_points_br = prev_depth_br.view(1, -1) * cam_points_br
-
-                # make dim as 4
-                cam_points_tl = torch.cat([cam_points_tl, torch.ones((1, prev_det_tl.shape[0]))], dim=0)  # (4, N)
-                cam_points_br = torch.cat([cam_points_br, torch.ones((1, prev_det_br.shape[0]))], dim=0)
-
-                # world -> cam
-                T = transformation.squeeze().cpu()
-                P = torch.matmul(self.K, T)[:3, :]  # (3, 4)
-
-                cam_points_tl = torch.matmul(P, cam_points_tl)  # (3, N)
-                pix_coords_tl = cam_points_tl[:2, :] / (cam_points_tl[2, :].unsqueeze(0) + 1e-7)  # (2, N)
-                pix_coords_tl = pix_coords_tl.t()  # (N, 2)
-
-                cam_points_br = torch.matmul(P, cam_points_br)
-                pix_coords_br = cam_points_br[:2, :] / (cam_points_br[2, :].unsqueeze(0) + 1e-7) 
-                pix_coords_br = pix_coords_br.t()
-
-                pix_coords = torch.cat([pix_coords_tl, pix_coords_br], dim=1)  # (N, 4)
-
-                self._plot_det(img0_, pix_coords, dets2=multi_mean)
-
-                self.prev_det = torch.from_numpy(dets_first[:, :4]).float()
-
-                if self.frame_id > 45: exit()
+                if self.frame_id == 60: exit()
 
         # motion compensation
         if self.opt.motion_comp == 'bot':
@@ -735,8 +743,8 @@ class Tracker_d(JDETracker):
             STrack_d.multi_gmc(unconfirmed, warp)
         elif self.opt.motion_comp == 'pose':
             # kalman: predict position in current coordinate axis -> transform coordinate axis
-            STrack_d.multi_pmc(strack_pool, transformation)
-            STrack_d.multi_pmc(unconfirmed, transformation)
+            STrack_d.multi_pmc(strack_pool, self.prev_depth_map, self.K, self.inv_K, transformation)
+            STrack_d.multi_pmc(unconfirmed, self.prev_depth_map, self.K, self.inv_K, transformation)
 
         activated_starcks, refind_stracks, u_track, u_detection_high = self.depth_cascade_matching(
                                                                                 detections, 
@@ -828,6 +836,7 @@ class Tracker_d(JDETracker):
     
 
 def joint_stracks(tlista, tlistb):
+
     exists = {}
     res = []
     for t in tlista:

@@ -69,6 +69,15 @@ def ious(atlbrs, btlbrs):
 
     return ious
 
+def single_iou(tlbr_1, tlbr_2):
+    """
+    cal iou only between two bboxes
+    Args:
+        tlbr_1, tlbr_2: np.ndarray, (4, )
+    """
+    return bbox_ious(
+        tlbr_1[None, :].astype(float), tlbr_2[None, :].astype(float)
+    ).item()
 
 def iou_distance(atracks, btracks):
     """

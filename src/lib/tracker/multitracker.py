@@ -164,6 +164,15 @@ class STrack(BaseTrack):
         ret = np.asarray(tlwh).copy()
         ret[2:] += ret[:2]
         return ret
+    
+    @staticmethod
+    def xywh_to_tlbr(xywh):
+        ret = np.asarray(xywh).copy()
+
+        ret[:2] -= 0.5 * ret[2:]
+        ret[2:] += ret[:2]
+
+        return ret
 
     def __repr__(self):
         return 'OT_{}_({}-{})'.format(self.track_id, self.start_frame, self.end_frame)
