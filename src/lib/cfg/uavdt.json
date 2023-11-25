@@ -1,0 +1,15 @@
+{
+    "root":"/data/wujiapeng/datasets",
+    "train":
+    {
+        "uavdt":"./data/uavdt.train"
+    },
+    "test_emb":
+    {
+        "uavdt":"./data/uavdt.val"
+    },
+    "test":
+    {
+       "uavdt":"./data/uavdt.val"
+    }
+}

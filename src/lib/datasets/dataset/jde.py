@@ -25,7 +25,7 @@ class LoadImages:  # for inference
     mean = [0.408, 0.447, 0.470]
     std = [0.289, 0.274, 0.278]
 
-    def __init__(self, opt, path, img_size=(1088, 608)):
+    def __init__(self, opt, path, img_size=(1088, 608), letterbox_resize=False):
         if os.path.isdir(path):
             image_format = ['.jpg', '.jpeg', '.png', '.tif']
             self.files = sorted(glob.glob('%s/*.*' % path))
@@ -40,8 +40,10 @@ class LoadImages:  # for inference
         self.height = img_size[1]
         self.count = 0
 
-        self.num_classes = 5 if opt.test_visdrone else 1
+        self.num_classes = 2 if opt.test_visdrone else 1
         self.nID = None
+
+        self.letterbox_resize = letterbox_resize
 
         assert self.nF > 0, 'No images found in ' + path
 
@@ -59,8 +61,10 @@ class LoadImages:  # for inference
         img0 = cv2.imread(img_path)  # BGR
         assert img0 is not None, 'Failed to load ' + img_path
 
-        # Padded resize
-        img, _, _, _ = letterbox(img0, height=self.height, width=self.width)
+        if self.letterbox_resize:
+            img, _, _, _ = letterbox(img0, height=self.height, width=self.width)
+        else:
+            img = cv2.resize(img0, (self.width, self.height))
 
         # Normalize RGB
         img = img[:, :, ::-1].transpose(2, 0, 1)
@@ -79,7 +83,10 @@ class LoadImages:  # for inference
         assert img0 is not None, 'Failed to load ' + img_path
 
         # Padded resize
-        img, _, _, _ = letterbox(img0, height=self.height, width=self.width)
+        if self.letterbox_resize:
+            img, _, _, _ = letterbox(img0, height=self.height, width=self.width)
+        else:
+            img = cv2.resize(img0, (self.width, self.height))
 
         # Normalize RGB
         img = img[:, :, ::-1].transpose(2, 0, 1)

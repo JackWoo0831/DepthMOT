@@ -54,7 +54,7 @@ def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=N
     return im
 
 def plot_tracking_depth(image, tlwhs, obj_ids, scores=None, depths=None, frame_id=0, fps=0., 
-                        ids2=None, show_depth=True):
+                        ids2=None, show_depth=False):
     im = np.ascontiguousarray(np.copy(image))
     im_h, im_w = im.shape[:2]
 
@@ -62,7 +62,7 @@ def plot_tracking_depth(image, tlwhs, obj_ids, scores=None, depths=None, frame_i
 
     text_scale = max(1, image.shape[1] / 1600.)
     text_thickness = 2
-    line_thickness = max(1, int(image.shape[1] / 500.))
+    line_thickness = max(2, int(image.shape[1] / 500.))
 
     radius = max(5, int(im_w/140.))
     cv2.putText(im, 'frame: %d fps: %.2f num: %d' % (frame_id, fps, len(tlwhs)),

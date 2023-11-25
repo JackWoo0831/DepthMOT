@@ -17,6 +17,7 @@ IGNORE_SEQS = []
 
 VALID_CLASS = [1, 4, 5, 6, 9]  # valid class id
 VALID_CLASS_DICT = {cls_id: idx for idx, cls_id in enumerate(VALID_CLASS)}
+VALID_CLASS_DICT = {1: 0, 4: 1, 5: 1, 6: 1, 9: 1}  # merge cars
 
 image_wh_dict = {}  # seq->(w,h) 字典 用于归一化
 

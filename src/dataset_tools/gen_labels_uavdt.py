@@ -54,8 +54,8 @@ def generate_imgs_and_labels(opts):
         frame_range['end'] = 0.5
 
     # 分别处理train与test
-    # process_train_test(train_seq_list, frame_range, CATEGOTY_ID, 'train', norm_for_yolo=opts.norm, debug=opts.debug)
-    process_train_test(test_seq_list, {'start': 0.0, 'end': 1.0}, CATEGOTY_ID, 'test', norm_for_yolo=opts.norm, debug=opts.debug)
+    process_train_test(train_seq_list, frame_range, CATEGOTY_ID, 'train', norm_for_yolo=opts.norm, debug=opts.debug)
+    # process_train_test(test_seq_list, {'start': 0.0, 'end': 1.0}, CATEGOTY_ID, 'test', norm_for_yolo=opts.norm, debug=opts.debug)
     print('All Done!!')
                 
 
@@ -158,9 +158,9 @@ def process_train_test(seqs: list, frame_range: dict, cat_id: int = 0, split: st
 
             to_file = osp.join(to_file, 'img' + str(idx + 1).zfill(6) + '.txt')
 
-            with open(to_file, 'a') as f_to:
-                for line in write_lines:
-                    f_to.write(line)
+            # with open(to_file, 'a') as f_to:
+            #     for line in write_lines:
+            #         f_to.write(line)
 
             # debug 标签可视化
             if debug and idx < 30:  # 每个序列可视化前30帧
@@ -192,6 +192,7 @@ def vis_labels(img_path, annos, write_path='./debug_datasets/'):
     可视化标签
     """
     img_to_show = cv2.imread(img_path, )
+    img_to_show = cv2.resize(img_to_show, (1088, 608))
     h0, w0 = img_to_show.shape[0], img_to_show.shape[1]
     
     for anno in annos:

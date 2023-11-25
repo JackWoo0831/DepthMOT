@@ -320,7 +320,7 @@ if __name__ == '__main__':
                     uav0000355_00001_v
                     uav0000370_00001_v
                 '''
-        seqs_str = '''uav0000201_00000_v'''
+        seqs_str = '''uav0000088_00290_v'''
         data_root = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/images/test'
         
     if opt.test_uavdt:
@@ -345,5 +345,5 @@ if __name__ == '__main__':
          seqs=seqs,
          exp_name='MOT17_test_public_dla34',
          show_image=False,
-         save_images=False,
+         save_images=True,
          save_videos=False)
