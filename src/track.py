@@ -320,7 +320,7 @@ if __name__ == '__main__':
                     uav0000355_00001_v
                     uav0000370_00001_v
                 '''
-        seqs_str = '''uav0000088_00290_v'''
+        seqs_str = '''uav0000355_00001_v'''
         data_root = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/images/test'
         
     if opt.test_uavdt:

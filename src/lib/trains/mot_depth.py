@@ -180,7 +180,7 @@ class MotDepthLoss(nn.Module):
                     align_corners=False
                 )
 
-    def gen_current_image(self, prev_img, prev_disp, transform, ):
+    def gen_current_image(self, prev_img, cur_img, prev_disp, transform, ):
         """
         for debug in inference: pred next images according to current img, disp and camera transform
         """
@@ -192,6 +192,14 @@ class MotDepthLoss(nn.Module):
         
         pix_coords = self.project_3d(
             cam_points, self.K, T)
+        
+        if False:
+            print(pix_coords.shape)
+            print(pix_coords[0, :, 0])  # top left -> bottom left
+            print(pix_coords[:, -1, :])  # bottom left -> bottom right 
+            print(pix_coords[0, :, -1])  # top right -> bottom right
+            print(pix_coords[0, 0, :])  # top left -> top right
+
                 
         ret = F.grid_sample(
             prev_img, 

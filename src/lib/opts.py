@@ -29,7 +29,7 @@ class opts(object):
     # system
     self.parser.add_argument('--gpus', default='2, 3',
                              help='-1 for CPU, use comma for multiple gpus')
-    self.parser.add_argument('--num_workers', type=int, default=0,
+    self.parser.add_argument('--num_workers', type=int, default=8,
                              help='dataloader threads. 0 for single-thread.')
     self.parser.add_argument('--not_cuda_benchmark', action='store_true',
                              help='disable when the input size is not fixed.')
@@ -127,7 +127,7 @@ class opts(object):
     self.parser.add_argument('--output-format', type=str, default='video', help='video or text')
     self.parser.add_argument('--output-root', type=str, default='../demos', help='expected output root path')
 
-    self.parser.add_argument('--motion_comp', type=str, default='none', choices=['none', 'bot', 'pose'], help='motion compensation')
+    self.parser.add_argument('--motion_comp', type=str, default='pose', choices=['none', 'bot', 'pose'], help='motion compensation')
 
     # mot
     self.parser.add_argument('--data_cfg', type=str,

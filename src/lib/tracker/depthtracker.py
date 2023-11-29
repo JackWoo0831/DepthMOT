@@ -21,6 +21,7 @@ from .basetrack import TrackState
 from .multitracker import STrack, JDETracker
 
 from trains.mot_depth import MotDepthLoss
+from utils.depth_utils import disp_to_depth
 
 class STrack_d(STrack):
     shared_kalman = BotKalmanFilter()  # Kalman state vector: [xc, yc, w, h, ...]
@@ -133,15 +134,18 @@ class STrack_d(STrack):
                 stracks[i].covariance = cov
         
     @staticmethod
-    def multi_pmc(stracks, depth_map, K, inv_K, T):
+    def multi_pmc(stracks, depth_map, K, inv_K, T, comp_pose=False, print_ref=False, iou_check=False):
         """
         Pose motion compensation
         Args:
             stracks: List[STrack_d]
-            depth_map: torch.Tensor (w0, h0)
+            depth_map: torch.Tensor (h0, w0)
             K: camera intrinsic matrix, torch.Tensor (4, 4)
             inv_K: penrose inv of intrinsic matrix, torch.Tensor (4, 4)
             T: transform matrix of two camera coords in world coord, torch.Tensor (4, 4)
+            comp_pose: compensate pixel offset, bool
+            print_ref: for debug, bool
+            iou_check: check iou for validation, bool
         Return:
             None
         """
@@ -151,13 +155,19 @@ class STrack_d(STrack):
             multi_mean[:, :2] -= 0.5 * multi_mean[:, 2:]  # xywh -> tlwh
             multi_mean[:, 2:] += multi_mean[:, :2]  # tlwh -> tlbr
 
-            multi_mean_tlbr = np.array(multi_mean)  # bkup
+            multi_mean_ori = np.array(multi_mean)  # bkup
 
             multi_mean_tl = torch.from_numpy(multi_mean[:, :2]).float()
             multi_mean_br = torch.from_numpy(multi_mean[:, 2:]).float()
 
             multi_mean_tl = STrack_d.map_coord(multi_mean_tl, depth_map, K, inv_K, T)
             multi_mean_br = STrack_d.map_coord(multi_mean_br, depth_map, K, inv_K, T)
+
+            # compensate pixel offsets
+            if comp_pose:
+                
+                multi_mean_tl = STrack_d._comp_pose(multi_mean_tl, depth_map, K, inv_K, T, print_ref)
+                multi_mean_br = STrack_d._comp_pose(multi_mean_br, depth_map, K, inv_K, T, print_ref)
 
             multi_mean = torch.cat([multi_mean_tl, multi_mean_br], dim=1).numpy()
 
@@ -167,15 +177,45 @@ class STrack_d(STrack):
 
 
             for i in range(len(stracks)):
+               
+                if iou_check:
+                    # cal iou
+                    cur_mean, new_mean = multi_mean_ori[i], multi_mean[i]
+                
+                    new_mean = STrack.xywh_to_tlbr(new_mean)
+                    iou = matching.single_iou(cur_mean, new_mean)
 
-                # cal iou
-                cur_mean, new_mean = multi_mean_tlbr[i], multi_mean[i]
-            
-                new_mean = STrack.xywh_to_tlbr(new_mean)
-                iou = matching.single_iou(cur_mean, new_mean)
+                    if iou >= 0.5:
+                        stracks[i].mean[: 4] = multi_mean[i]
 
-                if iou >= 0.5:
+                else: 
                     stracks[i].mean[: 4] = multi_mean[i]
+
+    @staticmethod
+    def _comp_pose(coords, depth_map, K, inv_K, T, print_ref=False):
+        """
+        compensate pixel offset of PoseNet
+        """
+        h0, w0 = depth_map.shape[0], depth_map.shape[1]
+        ref_col = torch.cat([torch.zeros((h0, 1)), torch.arange(0, h0).unsqueeze(1)], dim=1)  # top-left -> bottom-left
+        ref_row = torch.cat([torch.arange(0, w0).unsqueeze(1), (h0 - 1) * torch.ones((w0, 1))], dim=1)  # bottom-left -> bottom-right
+        
+        # solve the new position of ref col and row in current frame
+        ref_col = STrack_d.map_coord(ref_col, depth_map, K, inv_K, T)  # look up table, key: y, value: offset of x
+        ref_row = STrack_d.map_coord(ref_row, depth_map, K, inv_K, T)  # look up table, key: x, value: offset of y
+
+        if print_ref:
+            print(ref_col, ref_row)
+
+        # compensate x
+        keys_ = coords[:, 1].long().clamp(0, h0 - 1)
+        coords[:, 0] += ref_col[keys_, 0]
+
+        # compensate y
+        keys_ = coords[:, 0].long().clamp(0, w0 - 1)
+        coords[:, 1] += ref_row[keys_, 1] - h0
+
+        return coords
 
     @staticmethod
     def map_coord(coords, depth_map, K, inv_K, T):
@@ -190,6 +230,8 @@ class STrack_d(STrack):
         N = coords.shape[0]
         h, w = depth_map.shape[0], depth_map.shape[1]
 
+        _, depth_map = disp_to_depth(depth_map, 0.1, 500)
+        
         coords = torch.cat([coords.t(), torch.ones((1, N))], dim=0)  # (3, N)
 
         # cam -> world
@@ -212,7 +254,7 @@ class STrack_d(STrack):
         cam_points = torch.mm(P, cam_points)  # (3, N)
 
         pix_coords = cam_points[:2, :] / (cam_points[2, :].unsqueeze(0) + 1e-7)  # (2, N)
-        
+
         return pix_coords.t()
                 
     @property
@@ -305,7 +347,7 @@ class Tracker_d(JDETracker):
         colormapped_im = (mapper.to_rgba(depth_map)[:, :, :3] * 255).astype(np.uint8)
 
         im = pil.fromarray(colormapped_im)
-        im.save(f'test_{self.frame_id}.jpg')
+        im.save(f'./debug_imgs/test_{self.frame_id}.jpg')
 
     def _get_deep_range(self, obj, step):
         col = []
@@ -407,13 +449,13 @@ class Tracker_d(JDETracker):
             
         return activated_starcks, refind_stracks, u_tracks, u_detection
     
-    def _pred_images(self, prev_img, prev_disp, transform, ):
+    def _pred_images(self, prev_img, cur_img, prev_disp, transform, ):
         """
         for debug: pred next images according to current img, disp and camera transform
         """
         if self.loss is not None:
             print(transform.shape)
-            return self.loss.gen_current_image(prev_img, prev_disp, transform, )
+            return self.loss.gen_current_image(prev_img, cur_img, prev_disp, transform, )
         else:
             return None
         
@@ -434,7 +476,7 @@ class Tracker_d(JDETracker):
                 intbox = tuple(map(int, (x0, y0, x1, y1)))
                 cv2.rectangle(img, intbox[0:2], intbox[2:4], color=(0, 255, 0), thickness=1)
 
-        cv2.imwrite(f'det_frame{self.frame_id}.jpg', img)
+        cv2.imwrite(f'debug_imgs/det_frame{self.frame_id}.jpg', img)
 
 
     def update(self, im_blob, img0):
@@ -619,6 +661,7 @@ class Tracker_d(JDETracker):
         if self.frame_id == 1:
             self.prev_img = None  # previous image for motion compensation, None | torch.Tensor, shape (1, 3, input_h, input_w)
             self.prev_depth_map = None  # previous depth map for motion compensation, None | torch.Tensor, shape (1, 1, input_h, input_w)
+            self.prev_depth_map_ori = None 
 
         activated_starcks = []
         refind_stracks = []
@@ -657,15 +700,16 @@ class Tracker_d(JDETracker):
             # depths = depths[0]
 
         # debug
-        if False:
-        # if self.debug and self.prev_depth_map is not None:
-            ret = self._pred_images(self.prev_img, self.prev_depth_map, transformation)
+        # if False:
+        if self.debug and self.prev_depth_map is not None:
+            # ret = self._pred_images(self.prev_img, im_blob, self.prev_depth_map, transformation.cuda())
+            ret = self._pred_images(self.prev_img, im_blob, self.prev_depth_map, transformation.cuda())
             ret = ret.permute(0, 2, 3, 1)
             ret = ret.squeeze().cpu().numpy()
             ret = ret * 255
             ret = ret.astype(np.uint8)            
             im = pil.fromarray(ret)
-            im.save(f'pred_{self.frame_id}.jpg')
+            im.save(f'debug_imgs/pred_{self.frame_id}.jpg')
 
         dets_dict = self.post_process(dets, meta)  # dict key: cls_id value: np.ndarray (obj num, 5)
         # merge all categories
@@ -712,7 +756,7 @@ class Tracker_d(JDETracker):
         STrack.multi_predict(strack_pool)
 
         # debug
-        if False:
+        if True:
             img0_ = np.array(img0)
             
             if self.frame_id == 1:
@@ -732,7 +776,7 @@ class Tracker_d(JDETracker):
 
                 self._plot_det(img0_, multi_mean)
 
-                # self._draw_depth_map(depth_map_ori)
+                self._draw_depth_map(depth_map_ori)
 
                 if self.frame_id == 60: exit()
 
@@ -743,8 +787,8 @@ class Tracker_d(JDETracker):
             STrack_d.multi_gmc(unconfirmed, warp)
         elif self.opt.motion_comp == 'pose':
             # kalman: predict position in current coordinate axis -> transform coordinate axis
-            STrack_d.multi_pmc(strack_pool, self.prev_depth_map, self.K, self.inv_K, transformation)
-            STrack_d.multi_pmc(unconfirmed, self.prev_depth_map, self.K, self.inv_K, transformation)
+            STrack_d.multi_pmc(strack_pool, self.prev_depth_map_ori, self.K, self.inv_K, transformation)
+            STrack_d.multi_pmc(unconfirmed, self.prev_depth_map_ori, self.K, self.inv_K, transformation)
 
         activated_starcks, refind_stracks, u_track, u_detection_high = self.depth_cascade_matching(
                                                                                 detections, 
@@ -820,7 +864,7 @@ class Tracker_d(JDETracker):
         # get scores of lost tracks
         output_stracks = [track for track in self.tracked_stracks if track.is_activated]
 
-        if self.debug:
+        if False:
             print('===========Frame {}=========='.format(self.frame_id))
             print('Activated: {}'.format([track.track_id for track in activated_starcks]))
             print('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -829,7 +873,9 @@ class Tracker_d(JDETracker):
 
 
         self.prev_img = im_blob
-        self.prev_depth_map = depth_map_ori
+        self.prev_img_ori = torch.from_numpy(img0).unsqueeze(0)
+        self.prev_depth_map = depth_map
+        self.prev_depth_map_ori = depth_map_ori
 
         return output_stracks
         
