@@ -300,14 +300,10 @@ class Tracker_d(JDETracker):
 
         # intrinsic matrix
         h, w = self.opt.img_size[1], self.opt.img_size[0]
-        self.K = torch.tensor([[0.58, 0, 0.5, 0],
-                            [0, 1.92, 0.5, 0],
+        self.K = torch.tensor([[0.6188, 0, 0.5, 0],
+                            [0, 1.8957, 0.5, 0],
                             [0, 0, 1, 0],
                             [0, 0, 0, 1]])
-        self.K[0, :] *= w
-        self.K[1, :] *= h 
-
-        self.inv_K = torch.pinverse(self.K)
 
     def _get_depth(self, depth_map, bboxes, h0=608, w0=1088):
         """
@@ -677,6 +673,14 @@ class Tracker_d(JDETracker):
         meta = {'c': c, 's': s,
                 'out_height': inp_height // self.opt.down_ratio,
                 'out_width': inp_width // self.opt.down_ratio}
+        
+        # update intrinsic matrix
+        if self.frame_id == 1:
+            self.K_ = self.K.clone()
+            self.K_[0, :] *= width 
+            self.K_[1, :] *= width 
+
+            self.inv_K_ = torch.pinverse(self.K_)
 
         ''' Step 1: Network forward, get detections'''
         with torch.no_grad():
@@ -755,8 +759,28 @@ class Tracker_d(JDETracker):
 
         STrack.multi_predict(strack_pool)
 
+        
+        # motion compensation
+        if self.opt.motion_comp == 'bot':
+            warp = self.motion_comp.apply(img0, dets)
+            STrack_d.multi_gmc(strack_pool, warp)
+            STrack_d.multi_gmc(unconfirmed, warp)
+        elif self.opt.motion_comp == 'pose':
+            # kalman: predict position in current coordinate axis -> transform coordinate axis
+            STrack_d.multi_pmc(strack_pool, self.prev_depth_map_ori, self.K_, self.inv_K_, transformation)
+            STrack_d.multi_pmc(unconfirmed, self.prev_depth_map_ori, self.K_, self.inv_K_, transformation)
+
+        activated_starcks, refind_stracks, u_track, u_detection_high = self.depth_cascade_matching(
+                                                                                detections, 
+                                                                                strack_pool, 
+                                                                                activated_starcks,
+                                                                                refind_stracks, 
+                                                                                levels=1, 
+                                                                                thresh=0.75, 
+                                                                                is_fuse=True)  
+
         # debug
-        if True:
+        if False:
             img0_ = np.array(img0)
             
             if self.frame_id == 1:
@@ -776,30 +800,9 @@ class Tracker_d(JDETracker):
 
                 self._plot_det(img0_, multi_mean)
 
-                self._draw_depth_map(depth_map_ori)
+                # self._draw_depth_map(depth_map_ori)
 
                 if self.frame_id == 60: exit()
-
-        # motion compensation
-        if self.opt.motion_comp == 'bot':
-            warp = self.motion_comp.apply(img0, dets)
-            STrack_d.multi_gmc(strack_pool, warp)
-            STrack_d.multi_gmc(unconfirmed, warp)
-        elif self.opt.motion_comp == 'pose':
-            # kalman: predict position in current coordinate axis -> transform coordinate axis
-            STrack_d.multi_pmc(strack_pool, self.prev_depth_map_ori, self.K, self.inv_K, transformation)
-            STrack_d.multi_pmc(unconfirmed, self.prev_depth_map_ori, self.K, self.inv_K, transformation)
-
-        activated_starcks, refind_stracks, u_track, u_detection_high = self.depth_cascade_matching(
-                                                                                detections, 
-                                                                                strack_pool, 
-                                                                                activated_starcks,
-                                                                                refind_stracks, 
-                                                                                levels=1, 
-                                                                                thresh=0.75, 
-                                                                                is_fuse=True)  
-
-
 
 
         ''' Step 3: Second association, with low score detections'''
