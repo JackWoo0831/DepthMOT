@@ -248,11 +248,7 @@ class UAVDataset_Depth(JointDataset):
             labels0 = np.loadtxt(label_path, dtype=np.float32).reshape(-1, 6)
 
             # Normalized xywh to pixel xyxy format
-            labels = labels0.copy()
-            labels[:, 2] = self.width * (labels0[:, 2] - labels0[:, 4] * 0.5)
-            labels[:, 3] = self.height * (labels0[:, 3] - labels0[:, 5] * 0.5)
-            labels[:, 4] = self.width * (labels0[:, 2] + labels0[:, 4] * 0.5)
-            labels[:, 5] = self.height * (labels0[:, 3] + labels0[:, 5] * 0.5)
+            labels = labels0
 
         else:
             labels = np.array([])       
