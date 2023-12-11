@@ -32,7 +32,7 @@ class UAVDataset_Depth(JointDataset):
         self.num_classes = 2 if opt.dataset == 'visdrone' else 1
 
         self.frame_interval = frame_interval
-        self.img_name_prefix_length = 0 if opt.dataset == 'visdrone' else 3
+        self.img_name_prefix_length = 3 if opt.dataset == 'uavdt' else 0
 
 
         # read image paths and get gt file paths

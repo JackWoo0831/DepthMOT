@@ -16,7 +16,8 @@ dataset_factory = {
 
 depth_dataset_factory = {
   'visdrone': UAVDataset_Depth, 
-  'uavdt': UAVDataset_Depth
+  'uavdt': UAVDataset_Depth, 
+  'mot17': UAVDataset_Depth, 
 }
 
 

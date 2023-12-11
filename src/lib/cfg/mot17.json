@@ -1,5 +1,5 @@
 {
-    "root":"/home/zyf/dataset",
+    "root":"/data/wujiapeng/datasets",
     "train":
     {
         "mot17":"./data/mot17.train"
