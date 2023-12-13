@@ -77,7 +77,7 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     if 'depth' in opt.task:
         tracker = Tracker_d(opt, frame_rate=frame_rate)
 
-    elif not opt.reid:
+    elif opt.reid:
         tracker = JDETracker(opt, frame_rate=frame_rate)
     else:
         tracker = myTracker(opt, frame_rate=frame_rate)
@@ -271,7 +271,7 @@ if __name__ == '__main__':
                       MOT17-10-SDP
                       MOT17-11-SDP
                       MOT17-13-SDP'''
-        data_root = os.path.join(opt.data_dir, 'MOT17/images/train')
+        data_root = '/data/wujiapeng/datasets/MOT17/images/train'
     if opt.val_mot15:
         seqs_str = '''Venice-2
                       KITTI-13
