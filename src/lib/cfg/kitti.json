@@ -1,0 +1,15 @@
+{
+    "root":"/data/wujiapeng/datasets",
+    "train":
+    {
+        "kitti":"./data/kitti.train"
+    },
+    "test_emb":
+    {
+        "kitti":"./data/kitti.val"
+    },
+    "test":
+    {
+       "kitti":"./data/kitti.val"
+    }
+}

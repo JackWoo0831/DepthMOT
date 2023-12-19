@@ -304,6 +304,11 @@ class Tracker_d(JDETracker):
                             [0, 1.8957, 0.5, 0],
                             [0, 0, 1, 0],
                             [0, 0, 0, 1]])
+        
+        self.K = torch.tensor([[0.58, 0, 0.5, 0],
+                            [0, 1.92, 0.5, 0],
+                            [0, 0, 1, 0],
+                            [0, 0, 0, 1]])
 
     def _get_depth(self, depth_map, bboxes, h0=608, w0=1088):
         """

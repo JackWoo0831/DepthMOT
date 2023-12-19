@@ -54,7 +54,7 @@ def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=N
     return im
 
 def plot_tracking_depth(image, tlwhs, obj_ids, scores=None, depths=None, frame_id=0, fps=0., 
-                        ids2=None, show_depth=False):
+                        ids2=None, show_depth=True):
     im = np.ascontiguousarray(np.copy(image))
     im_h, im_w = im.shape[:2]
 
@@ -79,7 +79,7 @@ def plot_tracking_depth(image, tlwhs, obj_ids, scores=None, depths=None, frame_i
             id_text = id_text + ', {}'.format(int(ids2[i]))
 
         if show_depth:
-            id_text = id_text + '_{:.3f}'.format(depth)
+            id_text = id_text + '_{}'.format(int(depth))
 
         _line_thickness = 1 if obj_id <= 0 else line_thickness
         color = get_color(abs(obj_id))

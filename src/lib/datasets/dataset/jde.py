@@ -40,7 +40,12 @@ class LoadImages:  # for inference
         self.height = img_size[1]
         self.count = 0
 
-        self.num_classes = 2 if opt.test_visdrone else 1
+        if opt.test_visdrone:
+            self.num_classes = 2
+        elif opt.test_kitti or opt.val_kitti:
+            self.num_classes = 2
+        else:
+            self.num_classes = 1
         self.nID = None
 
         self.letterbox_resize = letterbox_resize

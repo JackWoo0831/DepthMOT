@@ -18,6 +18,7 @@ depth_dataset_factory = {
   'visdrone': UAVDataset_Depth, 
   'uavdt': UAVDataset_Depth, 
   'mot17': UAVDataset_Depth, 
+  'kitti': UAVDataset_Depth, 
 }
 
 

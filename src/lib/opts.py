@@ -105,6 +105,8 @@ class opts(object):
     # tracking
     self.parser.add_argument('--test_visdrone', default=False, help='test VisDrone')
     self.parser.add_argument('--test_uavdt', default=False, help='test UAVDT')
+    self.parser.add_argument('--test_kitti', default=False, help='test KITTI')
+    self.parser.add_argument('--val_kitti', default=False, help='val KITTI')
 
     self.parser.add_argument('--test_mot16', default=False, help='test mot16')
     self.parser.add_argument('--val_mot15', default=False, help='val mot15')
@@ -258,6 +260,7 @@ class opts(object):
       opt.nID = dataset.nID
       # opt.img_size = (1920, 1024)
       opt.img_size = (1088, 608)
+      opt.img_size = (1024, 320)  # KITTI
       # opt.img_size = (864, 480)
       # opt.img_size = (576, 320)
     else:

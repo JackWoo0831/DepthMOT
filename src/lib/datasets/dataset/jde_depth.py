@@ -22,14 +22,19 @@ class UAVDataset_Depth(JointDataset):
     DataLoader with depth support
     """
     def __init__(self, opt, root, paths, img_size=(1088, 608), augment=False, transforms=None, 
-                 frame_interval=5, ):
+                 frame_interval=1, ):
         self.opt = opt
         dataset_names = paths.keys()
         self.img_files = OrderedDict()
         self.label_files = OrderedDict()
         self.tid_num = OrderedDict()
         self.tid_start_index = OrderedDict()
-        self.num_classes = 2 if opt.dataset == 'visdrone' else 1
+
+        if opt.dataset == 'visdrone':
+            self.num_classes = 2 
+        elif opt.dataset == 'kitti': 
+            self.num_classes = 2
+        else: self.num_classes = 1
 
         self.frame_interval = frame_interval
         self.img_name_prefix_length = 3 if opt.dataset == 'uavdt' else 0
@@ -291,7 +296,7 @@ class UAVDataset_Depth(JointDataset):
 
         num_of_digits = tail_length - self.img_name_prefix_length - 4
 
-        new_frame_name = prefix + '{:0{nd}d}.jpg'.format(new_frame_idx, nd=num_of_digits)
+        new_frame_name = prefix + '{:0{nd}d}.png'.format(new_frame_idx, nd=num_of_digits)
 
         return img_path[:-tail_length] + new_frame_name
     

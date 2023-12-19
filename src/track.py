@@ -30,20 +30,27 @@ def write_results(filename, results, data_type):
     if data_type == 'mot':
         save_format = '{frame},{id},{x1},{y1},{w},{h},1,-1,-1,-1\n'
     elif data_type == 'kitti':
-        save_format = '{frame} {id} pedestrian 0 0 -10 {x1} {y1} {x2} {y2} -10 -10 -10 -1000 -1000 -1000 -10\n'
+        save_format = '{frame} {id} {class_name} -1 -1 -1 {x1} {y1} {x2} {y2} -1 -1 -1 -1000 -1000 -1000 -10 1\n'
+        KITTI_CLS_DICT = {
+            1: 'Pedestrian', 
+            2: 'Car'
+        }
     else:
         raise ValueError(data_type)
 
     with open(filename, 'w') as f:
-        for frame_id, tlwhs, track_ids in results:
+        for frame_id, tlwhs, track_ids, classes in results:
             if data_type == 'kitti':
                 frame_id -= 1
-            for tlwh, track_id in zip(tlwhs, track_ids):
+            for tlwh, track_id, cls in zip(tlwhs, track_ids, classes):
                 if track_id < 0:
                     continue
                 x1, y1, w, h = tlwh
                 x2, y2 = x1 + w, y1 + h
-                line = save_format.format(frame=frame_id, id=track_id, x1=x1, y1=y1, x2=x2, y2=y2, w=w, h=h)
+                if data_type == 'kitti':
+                    line = save_format.format(frame=frame_id, id=track_id, class_name=KITTI_CLS_DICT[int(cls)],  x1=x1, y1=y1, x2=x2, y2=y2, w=w, h=h)
+                else:
+                    line = save_format.format(frame=frame_id, id=track_id, x1=x1, y1=y1, x2=x2, y2=y2, w=w, h=h)
                 f.write(line)
     logger.info('save results to {}'.format(filename))
 
@@ -103,10 +110,12 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
         online_tlwhs = []
         online_ids = []
         online_depths = []
+        online_classes = []
         #online_scores = []
         for t in online_targets:
             tlwh = t.tlwh
             tid = t.track_id
+            cls = t.cls
 
             if hasattr(t, 'depth'):
                 depth = t.depth
@@ -116,13 +125,14 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
             if tlwh[2] * tlwh[3] > opt.min_box_area:
                 online_tlwhs.append(tlwh)
                 online_ids.append(tid)
+                online_classes.append(cls)
                 #online_scores.append(t.score)
                 if depth is not None:
                     online_depths.append(depth)
 
         timer.toc()
         # save results
-        results.append((frame_id + 1, online_tlwhs, online_ids))
+        results.append((frame_id + 1, online_tlwhs, online_ids, online_classes))
         #results.append((frame_id + 1, online_tlwhs, online_ids, online_scores))
         if show_image or save_dir is not None:
 
@@ -148,7 +158,8 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
     logger.setLevel(logging.INFO)
     result_root = os.path.join(data_root, '..', 'results', exp_name)
     mkdir_if_missing(result_root)
-    data_type = 'mot'
+    # data_type = 'mot'
+    data_type = 'kitti'
 
     # run tracking
     accs = []
@@ -338,12 +349,22 @@ if __name__ == '__main__':
         
         data_root = '/data/wujiapeng/datasets/UAVDT/images/test'
 
-    seqs = [seq.strip() for seq in seqs_str.split()]
+
+    if opt.val_kitti:
+        seqs = ['{:04d}'.format(seq) for seq in range(21)]
+        data_root = '/data/wujiapeng/datasets/KITTI/training/image_02'
+    
+    if opt.test_kitti:
+        seqs = ['{:04d}'.format(seq) for seq in range(29)]
+        data_root = '/data/wujiapeng/datasets/KITTI/testingg/image_02'
+
+    if not (opt.val_kitti or opt.test_kitti):
+        seqs = [seq.strip() for seq in seqs_str.split()]
 
     main(opt,
          data_root=data_root,
          seqs=seqs,
          exp_name='MOT17_test_public_dla34',
          show_image=False,
-         save_images=False,
+         save_images=True,
          save_videos=False)
