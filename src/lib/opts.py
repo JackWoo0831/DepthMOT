@@ -260,7 +260,7 @@ class opts(object):
       opt.nID = dataset.nID
       # opt.img_size = (1920, 1024)
       opt.img_size = (1088, 608)
-      opt.img_size = (1024, 320)  # KITTI
+      # opt.img_size = (1024, 320)  # KITTI
       # opt.img_size = (864, 480)
       # opt.img_size = (576, 320)
     else:

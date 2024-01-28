@@ -158,7 +158,7 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
     logger.setLevel(logging.INFO)
     result_root = os.path.join(data_root, '..', 'results', exp_name)
     mkdir_if_missing(result_root)
-    # data_type = 'mot'
+    data_type = 'mot'
     data_type = 'kitti'
 
     # run tracking
@@ -331,7 +331,6 @@ if __name__ == '__main__':
                     uav0000355_00001_v
                     uav0000370_00001_v
                 '''
-        # seqs_str = '''uav0000355_00001_v'''
         data_root = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/images/test'
         
     if opt.test_uavdt:
@@ -356,7 +355,7 @@ if __name__ == '__main__':
     
     if opt.test_kitti:
         seqs = ['{:04d}'.format(seq) for seq in range(29)]
-        data_root = '/data/wujiapeng/datasets/KITTI/testingg/image_02'
+        data_root = '/data/wujiapeng/datasets/KITTI/testing/image_02'
 
     if not (opt.val_kitti or opt.test_kitti):
         seqs = [seq.strip() for seq in seqs_str.split()]

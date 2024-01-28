@@ -160,7 +160,9 @@ class STrack_d(STrack):
             multi_mean_tl = torch.from_numpy(multi_mean[:, :2]).float()
             multi_mean_br = torch.from_numpy(multi_mean[:, 2:]).float()
 
-            multi_mean_tl = STrack_d.map_coord(multi_mean_tl, depth_map, K, inv_K, T)
+            multi_mean_bl = torch.vstack([multi_mean_tl[:, 0], multi_mean_br[:, 1]], ).t()  # bottom-left coor
+
+            multi_mean_bl = STrack_d.map_coord(multi_mean_bl, depth_map, K, inv_K, T)
             multi_mean_br = STrack_d.map_coord(multi_mean_br, depth_map, K, inv_K, T)
 
             # compensate pixel offsets
@@ -169,6 +171,9 @@ class STrack_d(STrack):
                 multi_mean_tl = STrack_d._comp_pose(multi_mean_tl, depth_map, K, inv_K, T, print_ref)
                 multi_mean_br = STrack_d._comp_pose(multi_mean_br, depth_map, K, inv_K, T, print_ref)
 
+            # update multi_mean_tl
+            multi_mean_tl[:, 0] = multi_mean_bl[:, 0]
+            
             multi_mean = torch.cat([multi_mean_tl, multi_mean_br], dim=1).numpy()
 
             # tlbr -> xywh
@@ -189,7 +194,8 @@ class STrack_d(STrack):
                         stracks[i].mean[: 4] = multi_mean[i]
 
                 else: 
-                    stracks[i].mean[: 4] = multi_mean[i]
+                    # stracks[i].mean[: 4] = multi_mean[i]
+                    stracks[i].mean[: 4] = 0.9 * stracks[i].mean[: 4] + 0.1 * multi_mean[i]
 
     @staticmethod
     def _comp_pose(coords, depth_map, K, inv_K, T, print_ref=False):
