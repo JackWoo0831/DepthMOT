@@ -11,6 +11,7 @@ dataset_factory = {
   'mot': JointDataset, 
   'visdrone': UAVDataset, 
   'uavdt': UAVDataset, 
+  'kitti': UAVDataset, 
 
 }
 

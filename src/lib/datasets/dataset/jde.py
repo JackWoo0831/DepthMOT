@@ -522,7 +522,11 @@ class UAVDataset(JointDataset):
         self.label_files = OrderedDict()
         self.tid_num = OrderedDict()
         self.tid_start_index = OrderedDict()
-        self.num_classes = 5 if opt.dataset == 'visdrone' else 1
+        if opt.dataset == 'visdrone':
+            self.num_classes = 5 
+        elif opt.dataset == 'kitti': 
+            self.num_classes = 2
+        else: self.num_classes = 1
 
         # read image paths and get gt file paths
         for ds, path in paths.items():

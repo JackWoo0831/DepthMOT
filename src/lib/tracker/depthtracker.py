@@ -194,8 +194,8 @@ class STrack_d(STrack):
                         stracks[i].mean[: 4] = multi_mean[i]
 
                 else: 
-                    # stracks[i].mean[: 4] = multi_mean[i]
-                    stracks[i].mean[: 4] = 0.9 * stracks[i].mean[: 4] + 0.1 * multi_mean[i]
+                    stracks[i].mean[: 4] = multi_mean[i]
+                    # stracks[i].mean[: 4] = 0.9 * stracks[i].mean[: 4] + 0.1 * multi_mean[i]
 
     @staticmethod
     def _comp_pose(coords, depth_map, K, inv_K, T, print_ref=False):
@@ -309,12 +309,12 @@ class Tracker_d(JDETracker):
         self.K = torch.tensor([[0.6188, 0, 0.5, 0],
                             [0, 1.8957, 0.5, 0],
                             [0, 0, 1, 0],
-                            [0, 0, 0, 1]])
+                            [0, 0, 0, 1]])  # visdrone
         
         self.K = torch.tensor([[0.58, 0, 0.5, 0],
                             [0, 1.92, 0.5, 0],
                             [0, 0, 1, 0],
-                            [0, 0, 0, 1]])
+                            [0, 0, 0, 1]])  # uavdt and kitti
 
     def _get_depth(self, depth_map, bboxes, h0=608, w0=1088):
         """
@@ -484,184 +484,6 @@ class Tracker_d(JDETracker):
                 cv2.rectangle(img, intbox[0:2], intbox[2:4], color=(0, 255, 0), thickness=1)
 
         cv2.imwrite(f'debug_imgs/det_frame{self.frame_id}.jpg', img)
-
-
-    def update(self, im_blob, img0):
-        self.frame_id += 1
-        if self.frame_id == 1:
-            self.prev_img = None  # previous image for motion compensation, None | torch.Tensor, shape (1, 3, input_h, input_w)
-
-
-        activated_starcks = []
-        refind_stracks = []
-        lost_stracks = []
-        removed_stracks = []
-
-        width = img0.shape[1]
-        height = img0.shape[0]
-        inp_height = im_blob.shape[2]
-        inp_width = im_blob.shape[3]
-        c = np.array([width / 2., height / 2.], dtype=np.float32)
-        s = max(float(inp_width) / float(inp_height) * height, width) * 1.0
-        meta = {'c': c, 's': s,
-                'out_height': inp_height // self.opt.down_ratio,
-                'out_width': inp_width // self.opt.down_ratio}
-
-        ''' Step 1: Network forward, get detections'''
-        with torch.no_grad():
-            output = self.model.inference(im_blob, self.prev_img)
-            hm = output['hm'].sigmoid_()  # shape: (bs, cls_num, h, w)
-            wh = output['wh']  # shape: (bs, 4, h, w)
-            depth_map = output['disp_0']  # shape: (bs, 1, h, w)
-
-            # interpolate depth map under (inputh, inputw) to (h0, w0)
-            depth_map_ori = F.interpolate(depth_map, size=(height, width), mode='nearest')  # (bs, 1, h0, w0)
-            depth_map_ori = depth_map_ori[0, 0].cpu()  # (h0, w0)
-
-            assert not torch.isnan(depth_map_ori).any().item(), 'exists nan!'
-
-            reg = output['reg'] if self.opt.reg_offset else None  # shape: (bs, 2, h, w)
-            dets, inds = mot_decode(hm, wh, reg=reg, ltrb=self.opt.ltrb, K=self.opt.K)
-            # dets, depths, inds = mot_depth_decode(hm, wh, depth_map=depth_map, reg=reg, ltrb=self.opt.ltrb, K=self.opt.K)  # TODO: decode depth here
-            # depths = depths[0]
-
-        dets_dict = self.post_process(dets, meta)  # dict key: cls_id value: np.ndarray (obj num, 5)
-        # merge all categories
-        dets_list = []
-        for cls_id, boxes in dets_dict.items():
-            cls_array = cls_id * np.ones((boxes.shape[0], 1))
-            dets_list.append(np.hstack((boxes, cls_array)))
-        
-        dets = np.concatenate(dets_list, axis=0)  # shape: (obj num, 6)
-
-        # byte-track style
-        inds_high = dets[:, 4] > self.opt.conf_thres
-        inds_low = dets[:, 4] > 0.1
-        inds_second = np.logical_and(inds_low, np.logical_not(inds_high))
-
-        dets_first = dets[inds_high]
-        dets_second = dets[inds_second]
-
-        # get depth corresponding to dets
-        depth_first = self._get_depth(depth_map_ori, dets_first, h0=height, w0=width)
-        depth_second = self._get_depth(depth_map_ori, dets_second, h0=height, w0=width)
-
-        
-        # init high-score dets
-        if len(depth_first) > 0:
-            '''Detections'''
-            detections = [STrack_d(cls, STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], depth, 30) for
-                          (cls, tlbrs, depth) in zip(dets_first[:, 5], dets_first[:, :5], depth_first[:, ])]
-        else:
-            detections = []
-
-        ''' Add newly detected tracklets to tracked_stracks'''
-        unconfirmed = []
-        tracked_stracks = []  # type: list[STrack]
-        for track in self.tracked_stracks:
-            if not track.is_activated:
-                unconfirmed.append(track)
-            else:
-                tracked_stracks.append(track)
-
-        ''' Step 2: First association'''
-        strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
-
-        STrack.multi_predict(strack_pool)
-        dists = matching.iou_distance(strack_pool, detections)
-        # dists = matching.fuse_motion(self.kalman_filter, dists, strack_pool, detections)
-        matches, u_track, u_detection = matching.linear_assignment(dists, thresh=0.9)
-
-        for itracked, idet in matches:
-            track = strack_pool[itracked]
-            det = detections[idet]
-            if track.state == TrackState.Tracked:
-                track.update(detections[idet], self.frame_id)
-                activated_starcks.append(track)
-            else:
-                track.re_activate(det, self.frame_id, new_id=False)
-                refind_stracks.append(track)
-
-        ''' Step 3: Second association, with low score detections'''
-
-        if len(dets_second) > 0:
-            detections_second = [STrack_d(cls, STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], depth, 30) for
-                          (cls, tlbrs, depth) in zip(dets_second[:, 5], dets_second[:, :5], depth_second[:, ])]
-        else:
-            detections_second = []
-
-        r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
-        dists = matching.iou_distance(r_tracked_stracks, detections_second)
-
-        matches, u_track, u_detection_second = matching.linear_assignment(dists, thresh=0.5)
-
-        for itracked, idet in matches:
-            track = r_tracked_stracks[itracked]
-            det = detections_second[idet]
-            if track.state == TrackState.Tracked:
-                track.update(det, self.frame_id)
-                activated_starcks.append(track)
-            else:
-                track.re_activate(det, self.frame_id, new_id=False)
-                refind_stracks.append(track)
-
-        for it in u_track:
-            track = r_tracked_stracks[it]
-            if not track.state == TrackState.Lost:
-                track.mark_lost()
-                lost_stracks.append(track)
-
-
-        '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
-        detections = [detections[i] for i in u_detection]
-        dists = matching.iou_distance(unconfirmed, detections)
-        
-        matches, u_unconfirmed, u_detection = matching.linear_assignment(dists, thresh=0.7)
-        for itracked, idet in matches:
-            unconfirmed[itracked].update(detections[idet], self.frame_id)
-            activated_starcks.append(unconfirmed[itracked])
-        for it in u_unconfirmed:
-            track = unconfirmed[it]
-            track.mark_removed()
-            removed_stracks.append(track)
-
-        """ Step 4: Init new stracks"""
-        for inew in u_detection:
-            track = detections[inew]
-            if track.score < self.det_thresh:
-                continue
-            track.activate(self.kalman_filter, self.frame_id)
-            activated_starcks.append(track)
-        """ Step 5: Update state"""
-        for track in self.lost_stracks:
-            if self.frame_id - track.end_frame > self.max_time_lost:
-                track.mark_removed()
-                removed_stracks.append(track)
-
-        # print('Ramained match {} s'.format(t4-t3))
-
-        self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
-        self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_starcks)
-        self.tracked_stracks = joint_stracks(self.tracked_stracks, refind_stracks)
-        self.lost_stracks = sub_stracks(self.lost_stracks, self.tracked_stracks)
-        self.lost_stracks.extend(lost_stracks)
-        self.lost_stracks = sub_stracks(self.lost_stracks, self.removed_stracks)
-        self.removed_stracks.extend(removed_stracks)
-        self.tracked_stracks, self.lost_stracks = remove_duplicate_stracks(self.tracked_stracks, self.lost_stracks)
-        # get scores of lost tracks
-        output_stracks = [track for track in self.tracked_stracks if track.is_activated]
-
-        if self.debug:
-            print('===========Frame {}=========='.format(self.frame_id))
-            print('Activated: {}'.format([track.track_id for track in activated_starcks]))
-            print('Refind: {}'.format([track.track_id for track in refind_stracks]))
-            print('Lost: {}'.format([track.track_id for track in lost_stracks]))
-            print('Removed: {}'.format([track.track_id for track in removed_stracks]))
-
-
-        self.prev_img = im_blob
-
-        return output_stracks
     
     def update_depth(self, im_blob, img0):
         self.frame_id += 1
@@ -689,7 +511,7 @@ class Tracker_d(JDETracker):
         if self.frame_id == 1:
             self.K_ = self.K.clone()
             self.K_[0, :] *= width 
-            self.K_[1, :] *= width 
+            self.K_[1, :] *= height 
 
             self.inv_K_ = torch.pinverse(self.K_)
 
@@ -878,21 +700,12 @@ class Tracker_d(JDETracker):
         # get scores of lost tracks
         output_stracks = [track for track in self.tracked_stracks if track.is_activated]
 
-        if False:
-            print('===========Frame {}=========='.format(self.frame_id))
-            print('Activated: {}'.format([track.track_id for track in activated_starcks]))
-            print('Refind: {}'.format([track.track_id for track in refind_stracks]))
-            print('Lost: {}'.format([track.track_id for track in lost_stracks]))
-            print('Removed: {}'.format([track.track_id for track in removed_stracks]))
-
-
         self.prev_img = im_blob
         self.prev_img_ori = torch.from_numpy(img0).unsqueeze(0)
         self.prev_depth_map = depth_map
         self.prev_depth_map_ori = depth_map_ori
 
         return output_stracks
-        
     
 
 def joint_stracks(tlista, tlistb):
