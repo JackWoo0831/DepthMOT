@@ -41,7 +41,7 @@ class LoadImages:  # for inference
         self.count = 0
 
         if opt.test_visdrone:
-            self.num_classes = 2
+            self.num_classes = 5
         elif opt.test_kitti or opt.val_kitti:
             self.num_classes = 2
         else:

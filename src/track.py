@@ -159,7 +159,7 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
     result_root = os.path.join(data_root, '..', 'results', exp_name)
     mkdir_if_missing(result_root)
     data_type = 'mot'
-    data_type = 'kitti'
+    # data_type = 'kitti'
 
     # run tracking
     accs = []
@@ -365,5 +365,5 @@ if __name__ == '__main__':
          seqs=seqs,
          exp_name='MOT17_test_public_dla34',
          show_image=False,
-         save_images=True,
+         save_images=False,
          save_videos=False)
