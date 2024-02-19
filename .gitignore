@@ -11,11 +11,9 @@ exp/
 .vscode/ 
 *.pt
 *.pth
-*.png
 *.jpg
 todo.md
 videos/ 
-assets/
 src/data
 
 

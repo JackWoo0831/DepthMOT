@@ -31,7 +31,7 @@ class UAVDataset_Depth(JointDataset):
         self.tid_start_index = OrderedDict()
 
         if opt.dataset == 'visdrone':
-            self.num_classes = 2 
+            self.num_classes = 5 
         elif opt.dataset == 'kitti': 
             self.num_classes = 2
         else: self.num_classes = 1
